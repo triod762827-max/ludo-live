@@ -182,4 +182,80 @@ function game(){built=false;pawns={};lastRoll=-1;doneShown=false;unread=0;
  <div class="bwrap" id="bwrap"><div class="stage" id="stage"><div class="board" id="bd">${BOARD}</div></div><div class="fx" id="fx"></div></div>
  <div class="dock"><div class="card" id="lob"></div>
  <div class="card ctl" id="ctl"><div class="dw" id="dw"><div class="cube" id="cube">${CUBE}</div></div><div class="grow"><div id="ms"></div><div class="mut" id="sub"></div></div><button id="rl" class="go">Roll</button></div></div>`;
- $('sd').onclick=()=>{muted=
+ $('sd').onclick=()=>{muted=!muted;try{localStorage.mute=muted?1:0}catch(e){}$('sd').textContent=muted?'🔇':'🔊'};
+ $('mn').onclick=menu;$('chb').onclick=openChat;
+ $('rl').onclick=$('dw').onclick=()=>{if(S&&S.ph==='play'&&S.players[S.turn].id===you&&S.dice===null)send({t:'roll'})};
+ $('bd').onclick=e=>{const p=e.target.closest('.pw.mv');if(p)send({t:'move',i:+p.dataset.i})};fit()}
+
+// ---------- pawn movement (hops cell by cell) ----------
+function place(o,xy,z){o.el.style.left=xy[0]/15*100+'%';o.el.style.top=(xy[1]+.28)/15*100+'%';o.el.style.zIndex=z}
+function hop(el){el.classList.remove('hop');void el.offsetWidth;el.classList.add('hop')}
+function moveTo(o,s,i,from,to){
+ if(from<0||to-from>6||to<from){place(o,o.tg.xy,o.tg.z);hop(o.el);return}
+ o.anim=true;let q=from;const iv=setInterval(()=>{q++;place(o,pos(s,q,i),50);hop(o.el);SFX.step();
+  if(q>=to){clearInterval(iv);setTimeout(()=>{o.anim=false;place(o,o.tg.xy,o.tg.z);if(to===56)SFX.home()},120)}},190)}
+function update(){
+ const me=S.players.find(p=>p.id===you);if(!me)return;
+ const cur=S.ph==='play'?S.players[S.turn]:null,mine=!!cur&&cur.id===you,rolled=S.dice!==null,lob=S.ph==='lobby';
+ $('pbar').innerHTML=S.players.map(p=>`<div class="pc${cur===p?' on':''}${p.done?' dn':''}${ON.includes(p.id)?'':' off'}" style="--c:${COL[p.seat]}"><div class="av"><span>${AV[p.seat]}</span></div><div class="nm"></div><span class="rk">${p.done?MED[S.rank.indexOf(p.seat)]:'&nbsp;'}</span></div>`).join('');
+ [...document.querySelectorAll('.pc .nm')].forEach((e,k)=>e.textContent=S.players[k].name+(S.players[k].id===you?' (you)':ON.includes(S.players[k].id)?'':' (auto)'));
+ for(let k=0;k<4;k++)$('yh'+k).classList.toggle('on',!!cur&&cur.seat===k);
+ if(!built){built=true;for(let s=0;s<4;s++)for(let i=0;i<4;i++){const el=document.createElement('div');el.className='pw';el.dataset.i=i;el.style.setProperty('--c',COL[s]);
+  el.innerHTML='<div class="in"><div class="sh"></div><div class="bd"></div><div class="hd"></div></div>';el.hidden=true;$('bd').appendChild(el);pawns[s+'-'+i]={el,q:null,anim:false}}}
+ const mv=mine&&rolled?legal(me.seat,S.dice):[],items=[];
+ S.players.forEach(p=>S.tk[p.seat].forEach((q,i)=>items.push({s:p.seat,i,q,xy:pos(p.seat,q,i)})));
+ const g={};items.forEach(t=>(g[t.xy]=g[t.xy]||[]).push(t));
+ Object.values(g).forEach(a=>{if(a.length>1)a.forEach((t,j)=>{t.xy=[t.xy[0]+(j%2?.2:-.2),t.xy[1]+(j>1?.2:-.2)]})});
+ let capd=false;
+ items.forEach(t=>{const o=pawns[t.s+'-'+t.i],el=o.el,prev=o.q;el.hidden=false;t.z=Math.round(t.xy[1]*2);o.tg=t;o.q=t.q;
+  el.classList.toggle('mv',t.s===me.seat&&mv.includes(t.i));
+  if(o.anim)return;
+  if(prev===null||prev===t.q){place(o,t.xy,t.z);return}
+  if(t.q===-1)capd=true;if(prev<0&&t.q===0)SFX.out();
+  moveTo(o,t.s,t.i,prev,t.q)});
+ if(capd){SFX.cap();vib([80,40,80])}
+ // lobby / controls
+ $('lob').hidden=!lob;$('ctl').hidden=lob;
+ if(lob){const host=S.players[0].id===you;
+  $('lob').innerHTML=`<div>You are <b style="color:${COL[me.seat]}">${CN[me.seat]}</b> · ${S.players.length}/4 players</div>
+  <div class="row" style="margin:8px 0"><button class="alt grow${S.mode==='classic'?' on':''}" data-m="classic" ${host?'':'disabled'}>Classic</button><button class="alt grow${S.mode==='quick'?' on':''}" data-m="quick" ${host?'':'disabled'}>Quick</button></div>
+  <div class="mut">${S.mode==='classic'?'Bring all 4 pawns home. Play on until one player is left.':'First pawn home finishes your game.'}</div>
+  ${host?`<button id="go" class="go" style="width:100%;margin-top:10px" ${S.players.length<2?'disabled':''}>${S.players.length<2?'Waiting for friends…':'Start game'}</button>`:'<div class="mut" style="margin-top:8px">Waiting for the host to start…</div>'}`;
+  document.querySelectorAll('[data-m]').forEach(b=>b.onclick=()=>send({t:'mode',m:b.dataset.m}));if($('go'))$('go').onclick=()=>send({t:'start'})}
+ else{$('ms').textContent=S.msg;
+  $('sub').textContent=S.ph==='done'?'Game over':mine?(rolled?'Tap a glowing pawn':'Your turn – tap the dice'):'Waiting for '+(cur?cur.name:'')+'…';
+  $('rl').disabled=!(mine&&!rolled);$('dw').classList.toggle('my',mine&&!rolled&&S.ph==='play')}
+ if(rolled&&S.n!==lastRoll){lastRoll=S.n;const[ax,ay]=ROT[S.dice-1];rot++;
+  $('cube').style.transform=`rotateX(${ax+720*rot}deg) rotateY(${ay+720*rot}deg)`;
+  $('dw').classList.remove('rl');void $('dw').offsetWidth;$('dw').classList.add('rl');SFX.roll();if(S.dice===6)setTimeout(SFX.six,950)}
+ const key=S.turn+':'+S.n+':'+rolled;if(key!==lastKey){lastKey=key;if(mine&&!rolled&&S.ph==='play'){setTimeout(SFX.ping,300);vib(60)}}
+ if(S.ph==='done'&&!doneShown){doneShown=true;setTimeout(showResults,1400)}
+ if(S.ph!=='done'){doneShown=false;const o=$('ov');if(o)o.remove()}
+ fit()
+}
+function showResults(){
+ if(!S||S.ph!=='done')return;const host=S.players[0].id===you;
+ let ov=$('ov');if(!ov){ov=document.createElement('div');ov.id='ov';$('app').appendChild(ov)}
+ ov.innerHTML=`<div class="card"><h2 style="margin:0 0 8px">🏆 Final ranking</h2>${S.rank.map((seat,k)=>`<div class="rankrow" style="--c:${COL[seat]}"><span>${MED[k]}</span><span class="rn"></span></div>`).join('')}
+  ${host?'<button id="ag" class="go" style="width:100%;margin-top:8px">Play again</button>':'<div class="mut">Waiting for the host to play again…</div>'}</div>`;
+ [...$('ov').querySelectorAll('.rn')].forEach((e,k)=>{const p=S.players.find(p=>p.seat===S.rank[k]);e.textContent=AV[S.rank[k]]+' '+(p?p.name:'')});
+ if($('ag'))$('ag').onclick=()=>send({t:'again'});SFX.win();vib([100,50,100,50,200]);
+ for(let k=0;k<50;k++){const c=document.createElement('i');c.className='cf';c.style.left=Math.random()*100+'vw';c.style.background=COL[k%4];c.style.animationDuration=2+Math.random()*2.5+'s';c.style.animationDelay=Math.random()*.8+'s';document.body.appendChild(c);setTimeout(()=>c.remove(),5500)}}
+
+// ---------- chat ----------
+function addMsg(d){chatLog.push(d);if(chatLog.length>60)chatLog.shift();
+ if($('chat')){showMsg(d);const t=$('typ');if(t)t.textContent=''}
+ else if(!mineSeat(d.seat)){unread++;$('bg').textContent=unread;$('bg').hidden=false}}
+function showMsg(d){const l=$('log');if(!l)return;const el=document.createElement('div'),own=mineSeat(d.seat);
+ el.className='m'+(own?' me':'')+(/^(\p{Extended_Pictographic}\uFE0F?\s*){1,3}$/u.test(d.text)?' big':'');el.style.setProperty('--c',COL[d.seat]);
+ const b=document.createElement('b');b.textContent=own?'You':d.name;el.append(b,d.text);l.appendChild(el);l.scrollTop=l.scrollHeight}
+function floatEmoji(d){const f=document.createElement('div');f.className='fl';f.style.left=10+Math.random()*70+'%';f.textContent=d.e;
+ const s=document.createElement('small');s.textContent=d.name;f.appendChild(s);$('fx').appendChild(f);setTimeout(()=>f.remove(),2500)}
+function typing(d){const t=$('typ');if(!t)return;t.innerHTML='<span class="dots"><i></i><i></i><i></i></span> ';t.append(d.name+' is typing');clearTimeout(typT);typT=setTimeout(()=>t.textContent='',2500)}
+
+// ---------- turn timer ring ----------
+setInterval(()=>{if(!S||S.ph!=='play'||!S.dl)return;const left=Math.max(0,S.dl-(Date.now()+off)),el=document.querySelector('.pc.on .av');
+ if(el){el.style.setProperty('--p',left/TURN*360+'deg');el.dataset.t=Math.ceil(left/1000)}
+ const sec=Math.ceil(left/1000);if(S.players[S.turn].id===you&&sec<=5&&sec>0&&sec!==lastTick){lastTick=sec;SFX.tick()}},250);
+home();
+</script></body></html>
