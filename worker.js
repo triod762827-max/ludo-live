@@ -123,7 +123,12 @@ export class Room {
     else if (d.t === 'start' && host && s.ph === 'lobby' && s.players.length > 1) {
       s.players.sort((a, b) => a.seat - b.seat); s.ph = 'play'; s.turn = 0; s.msg = s.players[0].name + '’s turn'; this.arm(); this.sync();
     } else if (d.t === 'again' && host && s.ph === 'done') { clearTimeout(this.tm); this.reset(s.players, s.mode); this.sync(); }
-    else if (d.t === 'roll' && cur === p && s.dice === null) this.roll();
+    else if (d.t === 'leave') {
+      this.socks.delete(ws);
+      if (s.ph === 'lobby') { s.players = s.players.filter(x => x !== p); s.players.forEach((x, k) => (x.seat = ORDER[k])); }
+      else if (cur === p) this.arm();
+      this.sync();
+    } else if (d.t === 'roll' && cur === p && s.dice === null) this.roll();
     else if (d.t === 'move' && cur === p) this.move(d.i | 0);
     else if (d.t === 'chat') { const text = clean(d.text, 200); if (text) this.bc({ t: 'chat', seat: p.seat, name: p.name, text }); }
     else if (d.t === 'emoji') this.bc({ t: 'emoji', seat: p.seat, name: p.name, e: clean(d.e, 8) });
