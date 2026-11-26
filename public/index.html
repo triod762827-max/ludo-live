@@ -27,9 +27,9 @@ button.go{background:linear-gradient(#52d98a,#22a85a);box-shadow:0 4px 0 #136b37
 .pc.on .av{transform:scale(1.15);box-shadow:0 0 18px var(--c)}
 .pc.on .av::after{content:attr(data-t);position:absolute;right:-6px;bottom:-4px;background:#000c;border-radius:99px;font-size:12px;padding:0 6px}
 .pc .nm{font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.rk{font-size:18px}
-.bwrap{flex:1;min-height:0;container-type:size;display:grid;place-items:center;position:relative}
-.stage{width:min(100cqw,100cqh);aspect-ratio:1;perspective:900px;perspective-origin:50% 0}
-.board{position:relative;width:100%;height:100%;transform:rotateX(var(--t));transform-style:preserve-3d;border-radius:16px;box-shadow:0 40px 40px #0009;transition:transform .6s}
+.bwrap{flex:1;min-height:0;position:relative;overflow:hidden}
+.stage{position:absolute;perspective:900px;perspective-origin:50% 0}
+.board{position:relative;width:100%;height:100%;transform:rotateX(var(--t));transform-style:preserve-3d;border-radius:16px;transition:transform .6s}
 .board::before{content:"";position:absolute;inset:0;border-radius:16px;background:#4a2a10;transform:translateZ(-18px)}
 .board svg{display:block;width:100%;height:100%;border-radius:16px;border:6px solid #a9692f}
 .yh{opacity:0}.yh.on{opacity:1;animation:pl .9s infinite alternate}@keyframes pl{to{opacity:.25}}
@@ -141,10 +141,13 @@ function home(){document.body.classList.remove('gm');$('app').className='';$('ap
  <div class="card"><input id="nm" maxlength="14" placeholder="Your name" value="${esc(name)}"><button id="mk" class="go" style="width:100%;margin-top:6px">Create room</button></div>
  <div class="card"><input id="rc" maxlength="5" placeholder="Room code" style="text-transform:uppercase" value="${esc(location.hash.slice(1).toUpperCase().replace(/[^A-Z0-9]/g,''))}"><button id="jn" class="alt" style="width:100%;margin-top:6px">Join room</button></div><div class="err">${esc(err)}</div>`;
  $('mk').onclick=()=>start(true);$('jn').onclick=()=>start(false)}
-let chatOn=true,unread=0;
+let chatOn=true,unread=0,chatLog=[];
+function fit(){const w=$('bwrap');if(!w)return;const s=Math.floor(Math.min(w.clientWidth,w.clientHeight)),st=$('stage');
+ st.style.width=st.style.height=s+'px';st.style.left=(w.clientWidth-s)/2+'px';st.style.top=(w.clientHeight-s)/2+'px'}
+addEventListener('resize',fit);
 function leave(){if(!confirm('Leave this game?'))return;try{send({t:'leave'})}catch(e){}
- if(ws){ws.onclose=null;ws.close()}S=null;view='home';code='';location.hash='';built=false;pawns={};home()}
-function menu(){const m=$('menu');m.hidden=false;
+ if(ws){ws.onclose=null;ws.close()}S=null;view='home';code='';location.hash='';built=false;pawns={};chatLog=[];home()}
+function menu(){let m=$('menu');if(!m){m=document.createElement('div');m.id='menu';$('app').appendChild(m)}
  m.innerHTML=`<div class="card"><h3 style="margin:0 0 6px">Settings</h3>
  <button class="alt wide" id="m1">${muted?'🔇 Sound: off':'🔊 Sound: on'}</button>
  <button class="alt wide" id="m2">${chatOn?'💬 Chat: on':'🚫 Chat: off'}</button>
@@ -153,33 +156,36 @@ function menu(){const m=$('menu');m.hidden=false;
  <button class="red wide" id="m5">🚪 Leave game</button><button class="go wide" id="m6" style="text-align:center">Back to game</button>
  <div class="rules">Roll 6 to open a pawn · 6, capture or pawn home = roll again · three 6s in a row lose the turn · ★ squares are safe · exact number needed to reach home · ${TURN/1000}s per turn, then auto-play.</div></div>`;
  $('m1').onclick=()=>{muted=!muted;try{localStorage.mute=muted?1:0}catch(e){}$('sd').textContent=muted?'🔇':'🔊';menu()};
- $('m2').onclick=()=>{chatOn=!chatOn;$('chb').hidden=!chatOn;if(!chatOn)$('chat').classList.remove('open');menu()};
+ $('m2').onclick=()=>{chatOn=!chatOn;$('chb').hidden=!chatOn;if(!chatOn)closeChat();menu()};
  $('m3').onclick=()=>{flat=!flat;$('bd').style.setProperty('--t',flat?'0deg':'26deg');menu()};
  $('m4').onclick=()=>{try{navigator.clipboard.writeText(location.origin+'/#'+code)}catch(e){}$('m4').textContent='✅ Copied'};
- $('m5').onclick=()=>{m.hidden=true;leave()};$('m6').onclick=()=>m.hidden=true}
-function game(){built=false;pawns={};lastRoll=-1;doneShown=false;unread=0;
- document.body.classList.add('gm');$('app').className='gm';
- $('app').innerHTML=`<div class="top"><div class="grow">Room <span class="code">${code}</span></div><button id="sd" class="alt">${muted?'🔇':'🔊'}</button><button id="chb" class="alt" ${chatOn?'':'hidden'}>💬<span id="bg" hidden></span></button><button id="mn" class="alt">⚙️</button></div>
- <div class="pbar" id="pbar"></div>
- <div class="bwrap"><div class="stage"><div class="board" id="bd">${BOARD}</div></div><div class="fx" id="fx"></div></div>
- <div class="dock"><div class="card" id="lob"></div>
- <div class="card ctl" id="ctl"><div class="dw" id="dw"><div class="cube" id="cube">${CUBE}</div></div><div class="grow"><div id="ms"></div><div class="mut" id="sub"></div></div><button id="rl" class="go">Roll</button></div></div>
- <div id="chat"><div class="react">${['😂','😡','👏','🔥','😭','🎉'].map(e=>`<button data-e="${e}">${e}</button>`).join('')}</div>
+ $('m5').onclick=()=>{m.remove();leave()};$('m6').onclick=()=>m.remove()}
+function closeChat(){const c=$('chat');if(c){c.classList.remove('open');setTimeout(()=>c.remove(),300)}}
+function openChat(){if($('chat'))return closeChat();unread=0;$('bg').hidden=true;
+ const c=document.createElement('div');c.id='chat';
+ c.innerHTML=`<div class="react">${['😂','😡','👏','🔥','😭','🎉'].map(e=>`<button data-e="${e}">${e}</button>`).join('')}</div>
  <div id="log"></div><div id="typ"></div>
  <div class="row"><input id="ci" class="grow" maxlength="200" placeholder="Say something…" autocomplete="off"><button id="em" class="alt">😊</button><button id="sn">Send</button></div>
- <div class="pick" id="pk" hidden>${EMO.map(e=>`<button>${e}</button>`).join('')}</div></div>
- <div id="ov" hidden></div><div id="menu" hidden></div>`;
- $('sd').onclick=()=>{muted=!muted;try{localStorage.mute=muted?1:0}catch(e){}$('sd').textContent=muted?'🔇':'🔊'};
- $('mn').onclick=menu;
- $('chb').onclick=()=>{const c=$('chat');c.classList.toggle('open');if(c.classList.contains('open')){unread=0;$('bg').hidden=true;$('log').scrollTop=1e9}};
+ <div class="pick" id="pk" hidden>${EMO.map(e=>`<button>${e}</button>`).join('')}</div>`;
+ $('app').appendChild(c);chatLog.forEach(showMsg);
+ c.querySelector('.react').onclick=e=>{const b=e.target.closest('button');if(b)send({t:'emoji',e:b.dataset.e})};
  $('em').onclick=()=>$('pk').hidden=!$('pk').hidden;
  $('pk').onclick=e=>{if(e.target.tagName==='BUTTON'){$('ci').value+=e.target.textContent;$('ci').focus()}};
- document.querySelector('.react').onclick=e=>{const b=e.target.closest('button');if(b)send({t:'emoji',e:b.dataset.e})};
  const say=()=>{const v=$('ci').value.trim();if(v){send({t:'chat',text:v});$('ci').value=''}};
  $('sn').onclick=say;$('ci').onkeydown=e=>{if(e.key==='Enter')say()};
  $('ci').oninput=()=>{if(Date.now()-lastTyp>1500){lastTyp=Date.now();send({t:'typing'})}};
+ requestAnimationFrame(()=>requestAnimationFrame(()=>c.classList.add('open')))}
+function game(){built=false;pawns={};lastRoll=-1;doneShown=false;unread=0;
+ document.body.classList.add('gm');$('app').className='gm';
+ $('app').innerHTML=`<div class="top"><div class="grow">Room <span class="code">${code}</span> <small class="mut">v4</small></div><button id="sd" class="alt">${muted?'🔇':'🔊'}</button><button id="chb" class="alt" ${chatOn?'':'hidden'}>💬<span id="bg" hidden></span></button><button id="mn" class="alt">⚙️</button></div>
+ <div class="pbar" id="pbar"></div>
+ <div class="bwrap" id="bwrap"><div class="stage" id="stage"><div class="board" id="bd">${BOARD}</div></div><div class="fx" id="fx"></div></div>
+ <div class="dock"><div class="card" id="lob"></div>
+ <div class="card ctl" id="ctl"><div class="dw" id="dw"><div class="cube" id="cube">${CUBE}</div></div><div class="grow"><div id="ms"></div><div class="mut" id="sub"></div></div><button id="rl" class="go">Roll</button></div></div>`;
+ $('sd').onclick=()=>{muted=!muted;try{localStorage.mute=muted?1:0}catch(e){}$('sd').textContent=muted?'🔇':'🔊'};
+ $('mn').onclick=menu;$('chb').onclick=openChat;
  $('rl').onclick=$('dw').onclick=()=>{if(S&&S.ph==='play'&&S.players[S.turn].id===you&&S.dice===null)send({t:'roll'})};
- $('bd').onclick=e=>{const p=e.target.closest('.pw.mv');if(p)send({t:'move',i:+p.dataset.i})}}
+ $('bd').onclick=e=>{const p=e.target.closest('.pw.mv');if(p)send({t:'move',i:+p.dataset.i})};fit()}
 
 // ---------- pawn movement (hops cell by cell) ----------
 function place(o,xy,z){o.el.style.left=xy[0]/15*100+'%';o.el.style.top=(xy[1]+.28)/15*100+'%';o.el.style.zIndex=z}
@@ -224,22 +230,25 @@ function update(){
   $('dw').classList.remove('rl');void $('dw').offsetWidth;$('dw').classList.add('rl');SFX.roll();if(S.dice===6)setTimeout(SFX.six,950)}
  const key=S.turn+':'+S.n+':'+rolled;if(key!==lastKey){lastKey=key;if(mine&&!rolled&&S.ph==='play'){setTimeout(SFX.ping,300);vib(60)}}
  if(S.ph==='done'&&!doneShown){doneShown=true;setTimeout(showResults,1400)}
- if(S.ph!=='done'){doneShown=false;$('ov').hidden=true}
+ if(S.ph!=='done'){doneShown=false;const o=$('ov');if(o)o.remove()}
+ fit()
 }
 function showResults(){
  if(!S||S.ph!=='done')return;const host=S.players[0].id===you;
- $('ov').innerHTML=`<div class="card"><h2 style="margin:0 0 8px">🏆 Final ranking</h2>${S.rank.map((seat,k)=>`<div class="rankrow" style="--c:${COL[seat]}"><span>${MED[k]}</span><span class="rn"></span></div>`).join('')}
+ let ov=$('ov');if(!ov){ov=document.createElement('div');ov.id='ov';$('app').appendChild(ov)}
+ ov.innerHTML=`<div class="card"><h2 style="margin:0 0 8px">🏆 Final ranking</h2>${S.rank.map((seat,k)=>`<div class="rankrow" style="--c:${COL[seat]}"><span>${MED[k]}</span><span class="rn"></span></div>`).join('')}
   ${host?'<button id="ag" class="go" style="width:100%;margin-top:8px">Play again</button>':'<div class="mut">Waiting for the host to play again…</div>'}</div>`;
  [...$('ov').querySelectorAll('.rn')].forEach((e,k)=>{const p=S.players.find(p=>p.seat===S.rank[k]);e.textContent=AV[S.rank[k]]+' '+(p?p.name:'')});
- $('ov').hidden=false;if($('ag'))$('ag').onclick=()=>send({t:'again'});SFX.win();vib([100,50,100,50,200]);
+ if($('ag'))$('ag').onclick=()=>send({t:'again'});SFX.win();vib([100,50,100,50,200]);
  for(let k=0;k<50;k++){const c=document.createElement('i');c.className='cf';c.style.left=Math.random()*100+'vw';c.style.background=COL[k%4];c.style.animationDuration=2+Math.random()*2.5+'s';c.style.animationDelay=Math.random()*.8+'s';document.body.appendChild(c);setTimeout(()=>c.remove(),5500)}}
 
 // ---------- chat ----------
-function addMsg(d){const el=document.createElement('div'),own=mineSeat(d.seat);
+function addMsg(d){chatLog.push(d);if(chatLog.length>60)chatLog.shift();
+ if($('chat')){showMsg(d);const t=$('typ');if(t)t.textContent=''}
+ else if(!mineSeat(d.seat)){unread++;$('bg').textContent=unread;$('bg').hidden=false}}
+function showMsg(d){const l=$('log');if(!l)return;const el=document.createElement('div'),own=mineSeat(d.seat);
  el.className='m'+(own?' me':'')+(/^(\p{Extended_Pictographic}\uFE0F?\s*){1,3}$/u.test(d.text)?' big':'');el.style.setProperty('--c',COL[d.seat]);
- const b=document.createElement('b');b.textContent=own?'You':d.name;el.append(b,d.text);
- const l=$('log');l.appendChild(el);while(l.children.length>60)l.firstChild.remove();l.scrollTop=l.scrollHeight;$('typ').textContent='';
- if(!own&&!$('chat').classList.contains('open')){unread++;$('bg').textContent=unread;$('bg').hidden=false}}
+ const b=document.createElement('b');b.textContent=own?'You':d.name;el.append(b,d.text);l.appendChild(el);l.scrollTop=l.scrollHeight}
 function floatEmoji(d){const f=document.createElement('div');f.className='fl';f.style.left=10+Math.random()*70+'%';f.textContent=d.e;
  const s=document.createElement('small');s.textContent=d.name;f.appendChild(s);$('fx').appendChild(f);setTimeout(()=>f.remove(),2500)}
 function typing(d){const t=$('typ');if(!t)return;t.innerHTML='<span class="dots"><i></i><i></i><i></i></span> ';t.append(d.name+' is typing');clearTimeout(typT);typT=setTimeout(()=>t.textContent='',2500)}
